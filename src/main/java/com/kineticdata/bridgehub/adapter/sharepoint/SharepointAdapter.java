@@ -42,6 +42,20 @@ public class SharepointAdapter implements BridgeAdapter {
     
     /** Defines the logger */
     protected static final org.slf4j.Logger logger = LoggerFactory.getLogger(SharepointAdapter.class);
+
+    /** Adapter version constant. */
+    public static String VERSION;
+    /** Load the properties version from the version.properties file. */
+    static {
+        try {
+            java.util.Properties properties = new java.util.Properties();
+            properties.load(SharepointAdapter.class.getResourceAsStream("/"+SharepointAdapter.class.getName()+".version"));
+            VERSION = properties.getProperty("version");
+        } catch (IOException e) {
+            logger.warn("Unable to load "+SharepointAdapter.class.getName()+" version properties.", e);
+            VERSION = "Unknown";
+        }
+    }
     
     /** Defines the collection of property names for the adapter */
     public static class Properties {
@@ -85,7 +99,7 @@ public class SharepointAdapter implements BridgeAdapter {
     
     @Override
     public String getVersion() {
-        return "1.0.0";
+        return VERSION;
     }
     
     @Override
@@ -100,11 +114,6 @@ public class SharepointAdapter implements BridgeAdapter {
 
     @Override
     public Count count(BridgeRequest request) throws BridgeError {
-        // Log the access
-        logger.trace("Counting the Salesforce Records");
-        logger.trace("  Structure: " + request.getStructure());
-        logger.trace("  Query: " + request.getQuery());
-        
         String structure = request.getStructure();
         
         if (!VALID_STRUCTURES.contains(structure)) {
@@ -167,12 +176,6 @@ public class SharepointAdapter implements BridgeAdapter {
 
     @Override
     public Record retrieve(BridgeRequest request) throws BridgeError {
-        // Log the access
-        logger.trace("Retrieving ServiceNow Record");
-        logger.trace("  Structure: " + request.getStructure());
-        logger.trace("  Query: " + request.getQuery());
-        logger.trace("  Fields: " + request.getFieldString());
-        
         List<String> fields = request.getFields();
         String structure = request.getStructure();
         
@@ -253,12 +256,6 @@ public class SharepointAdapter implements BridgeAdapter {
 
     @Override
     public RecordList search(BridgeRequest request) throws BridgeError {
-        // Log the access
-        logger.trace("Searching ServiceNow Records");
-        logger.trace("  Structure: " + request.getStructure());
-        logger.trace("  Query: " + request.getQuery());
-        logger.trace("  Fields: " + request.getFieldString());
-        
         List<String> fields = request.getFields();
         String structure = request.getStructure();
         
