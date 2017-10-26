@@ -3,33 +3,31 @@ package com.kineticdata.bridgehub.adapter.sharepoint;
 import com.kineticdata.bridgehub.adapter.BridgeAdapter;
 import com.kineticdata.bridgehub.adapter.BridgeError;
 import com.kineticdata.bridgehub.adapter.BridgeRequest;
-import com.kineticdata.bridgehub.adapter.BridgeUtils;
 import com.kineticdata.bridgehub.adapter.Count;
 import com.kineticdata.bridgehub.adapter.Record;
 import com.kineticdata.bridgehub.adapter.RecordList;
 import com.kineticdata.commons.v1.config.ConfigurableProperty;
 import com.kineticdata.commons.v1.config.ConfigurablePropertyMap;
-import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.net.URLEncoder;
 import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import org.apache.commons.codec.binary.Base64;
+import org.apache.commons.lang.StringUtils;
 import org.apache.http.HttpEntity;
 import org.apache.http.HttpResponse;
 import org.apache.http.client.HttpClient;
 import org.apache.http.client.methods.HttpGet;
 import org.apache.http.impl.client.DefaultHttpClient;
 import org.apache.http.util.EntityUtils;
-import org.w3c.dom.Document;
-import org.w3c.dom.NodeList;
-import javax.xml.parsers.DocumentBuilder;
-import javax.xml.parsers.DocumentBuilderFactory;
+import org.json.simple.JSONArray;
+import org.json.simple.JSONObject;
+import org.json.simple.JSONValue;
 import org.slf4j.LoggerFactory;
-import org.xml.sax.InputSource;
 
 
 public class SharepointAdapter implements BridgeAdapter {
@@ -114,217 +112,139 @@ public class SharepointAdapter implements BridgeAdapter {
 
     @Override
     public Count count(BridgeRequest request) throws BridgeError {
-        String structure = request.getStructure();
-        
-        if (!VALID_STRUCTURES.contains(structure)) {
+        if (!VALID_STRUCTURES.contains(request.getStructure())) {
             throw new BridgeError("Invalid Structure: '" + request.getStructure() + "' is not a valid structure");
         }
-        
+
         SharepointQualificationParser parser = new SharepointQualificationParser();
-        StringBuilder queryBuilder = new StringBuilder();
-        queryBuilder.append(String.format("%s/_api/web/lists?", this.serverUrl));
-        String query = parser.parse(request.getQuery(),request.getParameters());
-        
-        if (query != null){
-            queryBuilder.append(URLEncoder.encode(query));
-        }
-        
-        // We have to replace the encoded "&" and "=" values because the Sharepoint API
-        // expects the literal values, not the encoded version.
-        String url = queryBuilder.toString().replaceAll("%3D", "=").replaceAll("%26", "&");
+        String query = parser.parse(request.getQuery(), request.getParameters());
 
-        HttpClient client = new DefaultHttpClient();
-        HttpGet get = new HttpGet(url);
-        String credentials = String.format("%s:%s", this.username, this.password);
-        byte[] basicAuthBytes = Base64.encodeBase64(credentials.getBytes());
-        get.setHeader("Authorization", "Basic " + new String(basicAuthBytes));
-        get.setHeader("Content-Type", "application/json");
-        
-        HttpResponse response;
-        String output = "";
-        
-        try {
-            response = client.execute(get);
-            HttpEntity entity = response.getEntity();
-            output = EntityUtils.toString(entity);
-        } 
-        catch (IOException e) {
-            throw new BridgeError("Unable to make a connection to properly execute the query to Sharepoint"); 
-        }
+        JSONArray lists = getSharepointLists(this.serverUrl, this.username, this.password,
+            request.getFields(), query);
 
-        Document doc;
-        try {
-            DocumentBuilderFactory dbFactory = DocumentBuilderFactory.newInstance();
-            DocumentBuilder dBuilder = dbFactory.newDocumentBuilder();
-            doc = dBuilder.parse(new InputSource(new ByteArrayInputStream(output.getBytes("utf-8"))));
-            
-            doc.getDocumentElement().normalize();
-        }
-//        catch (ParserConfigurationException | SAXException | IOException e) {
-        catch (Exception e) {
-            logger.error("Full XML Error: " + e.getMessage());
-            throw new BridgeError("Parsing of the XML response failed",e);
-        }
-        
-        NodeList nodeList = doc.getElementsByTagName("entry");
-
-        Long count;
-
-        count = Long.valueOf(nodeList.getLength());
-        return new Count(count);
+        return new Count(lists.size());
     }
 
     @Override
     public Record retrieve(BridgeRequest request) throws BridgeError {
-        List<String> fields = request.getFields();
-        String structure = request.getStructure();
-        
-        if (!VALID_STRUCTURES.contains(structure)) {
+        if (!VALID_STRUCTURES.contains(request.getStructure())) {
             throw new BridgeError("Invalid Structure: '" + request.getStructure() + "' is not a valid structure");
         }
-        
+
         SharepointQualificationParser parser = new SharepointQualificationParser();
-        StringBuilder queryBuilder = new StringBuilder();
-        queryBuilder.append(String.format("%s/_api/web/lists?", this.serverUrl));
         String query = parser.parse(request.getQuery(),request.getParameters());
-        
-        if (query != null){
-            queryBuilder.append(URLEncoder.encode(query));
+
+        JSONArray lists = getSharepointLists(this.serverUrl, this.username, this.password,
+            request.getFields(), query);
+
+        JSONObject list = null;
+        if (lists.size() > 1) {
+            throw new BridgeError("Multiple results matched an expected single match query.");
+        } else if (!lists.isEmpty()) {
+            list = (JSONObject)lists.get(0);
         }
+
+        return new Record(list, request.getFields());
+    }
+
+    @Override
+    public RecordList search(BridgeRequest request) throws BridgeError {
+        if (!VALID_STRUCTURES.contains(request.getStructure())) {
+            throw new BridgeError("Invalid Structure: '" + request.getStructure() + "' is not a valid structure");
+        }
+
+        SharepointQualificationParser parser = new SharepointQualificationParser();
+        String query = parser.parse(request.getQuery(),request.getParameters());
+
+        JSONArray lists = getSharepointLists(this.serverUrl, this.username, this.password,
+            request.getFields(), query);
         
-        // We have to replace the encoded "&" and "=" values because the Sharepoint API
-        // expects the literal values, not the encoded version.
-        String url = queryBuilder.toString().replaceAll("%3D", "=").replaceAll("%26", "&");
-        
+        List<Record> records = new ArrayList<Record>();
+        List<String> fields = request.getFields();
+        for (Object o : lists) {
+            // If fields is empty, add all non map fields to the field list
+            if (fields == null || fields.isEmpty()) {
+                fields = new ArrayList<String>();
+                Map<String,Object> list = (Map<String,Object>)o;
+                for (Map.Entry<String,Object> entry : list.entrySet()) {
+                    if (!(entry.getValue() instanceof Map)) fields.add(entry.getKey());
+                }
+            }
+            records.add(new Record((JSONObject)o));
+        }
+
+        // Returning the response
+        return new RecordList(fields, records);
+    }
+    
+
+    /**************************************************************************
+    * HELPER METHODS
+    **************************************************************************/
+
+    private JSONArray getSharepointLists(String sharepointUrl, String username, String password,
+        List<String> fields, String query) throws BridgeError
+    {
+        // Build the SharePoint URL
+        StringBuilder url = new StringBuilder();
+        url.append(sharepointUrl.replaceAll("/\\z", ""));
+        url.append("/_api/web/lists");
+
+        // Attempt to retrieve the listName from the query if it has been included
+        String listName = null;
+        Pattern pattern = Pattern.compile("^listName eq '(\\S*)'");
+        Matcher matcher = pattern.matcher(query);
+        if (matcher.find()) {
+            listName = matcher.group(1);
+            // Removing the listName and the and,or,not if it is at the front of the query
+            query = query.replaceAll("^listName eq '(\\S*)'", "")
+                .replaceAll("(^ and |^ or |^ not )", "");
+        }
+        if (listName != null) url.append("/GetByTitle('").append(listName).append("')/items");
+        url.append("?");
+
+        // Append the necessary query parameters
+        if (fields != null && !fields.isEmpty()) {
+            url.append("$select=").append(StringUtils.join(fields,",")).append("&");
+        }
+        if (query  != null && !query.isEmpty()) {
+            url.append("$filter=").append(URLEncoder.encode(query));
+        }
+
+        logger.debug(url.toString());
+
         HttpClient client = new DefaultHttpClient();
-        HttpGet get = new HttpGet(url);
+        HttpGet get = new HttpGet(url.toString());
+        // Append the username/password as a Basic Authorization Header
         String credentials = String.format("%s:%s", this.username, this.password);
         byte[] basicAuthBytes = Base64.encodeBase64(credentials.getBytes());
         get.setHeader("Authorization", "Basic " + new String(basicAuthBytes));
+        // Set the content type to application/json
+        get.setHeader("Accept","application/json; odata=verbose");
         get.setHeader("Content-Type", "application/json");
         
-        HttpResponse response;
         String output = "";
-        
         try {
-            response = client.execute(get);
+            HttpResponse response = client.execute(get);
             HttpEntity entity = response.getEntity();
             output = EntityUtils.toString(entity);
+
+            if (response.getStatusLine().getStatusCode() == 401) {
+                logger.error(output);
+                throw new BridgeError("401 Unauthorized: Unable to authenticate with the SharePoint server with the given username/password.");
+            } else if (response.getStatusLine().getStatusCode() != 200) {
+                logger.error(output);
+                throw new BridgeError("Unexpected Error (Code: "+String.valueOf(response.getStatusLine().getStatusCode())+
+                    "): Check the Bridgehub logs for more details");
+            }
         } 
         catch (IOException e) {
             throw new BridgeError("Unable to make a connection to properly execute the query to Sharepoint"); 
         }
 
-        Document doc;
-        try {
-            DocumentBuilderFactory dbFactory = DocumentBuilderFactory.newInstance();
-            DocumentBuilder dBuilder = dbFactory.newDocumentBuilder();
-            doc = dBuilder.parse(new InputSource(new ByteArrayInputStream(output.getBytes("utf-8"))));
-            
-            doc.getDocumentElement().normalize();
-        }
-//        catch (ParserConfigurationException | SAXException | IOException e) {
-        catch (Exception e) {
-            logger.error("Full XML Error: " + e.getMessage());
-            throw new BridgeError("Parsing of the XML response failed",e);
-        }
-        
-        NodeList nodeList = doc.getElementsByTagName("entry");
-        Record record;
-        
-        if (nodeList.getLength() > 1) {
-            throw new BridgeError("Multiple results matched an expected single match query");
-        }  
-        else if (nodeList.getLength() == 0) {
-            record = new Record(null);
-        }
-        else {
-            Map<String,Object> recordMap = new LinkedHashMap<String,Object>();
-            if (fields == null) {
-                record = new Record(null);
-            } else {
-                for (String field :fields) {
-                    NodeList propertyList = doc.getElementsByTagName("d:" + field);
-                    recordMap.put(field, propertyList.item(0).getTextContent());
-                }
-                record = new Record(recordMap);
-            }
-        }
-        
-        return record;
+        JSONObject json = (JSONObject)JSONValue.parse(output);
+        JSONObject d = (JSONObject)json.get("d");
+        JSONArray results = (JSONArray)d.get("results");
+        return results;
     }
-
-    @Override
-    public RecordList search(BridgeRequest request) throws BridgeError {
-        List<String> fields = request.getFields();
-        String structure = request.getStructure();
-        
-        if (!VALID_STRUCTURES.contains(structure)) {
-            throw new BridgeError("Invalid Structure: '" + request.getStructure() + "' is not a valid structure");
-        }
-        
-        StringBuilder queryBuilder = new StringBuilder();
-        Map<String,String> metadata = BridgeUtils.normalizePaginationMetadata(request.getMetadata());
-        queryBuilder.append(String.format("%s/_api/web/lists?", this.serverUrl));
-        SharepointQualificationParser parser = new SharepointQualificationParser();
-        String query = parser.parse(request.getQuery(),request.getParameters());
-        
-        if (query != null){
-            queryBuilder.append(URLEncoder.encode(query));
-        }
-        
-        // We have to replace the encoded "&" and "=" values because the Sharepoint API
-        // expects the literal values, not the encoded version.
-        String url = queryBuilder.toString().replaceAll("%3D", "=").replaceAll("%26", "&");
-        
-        HttpClient client = new DefaultHttpClient();
-        HttpGet get = new HttpGet(url);
-        String credentials = String.format("%s:%s", this.username, this.password);
-        byte[] basicAuthBytes = Base64.encodeBase64(credentials.getBytes());
-        get.setHeader("Authorization", "Basic " + new String(basicAuthBytes));
-        get.setHeader("Content-Type", "application/json");
-        
-        HttpResponse response;
-        String output = "";
-        
-        try {
-            response = client.execute(get);
-            HttpEntity entity = response.getEntity();
-            output = EntityUtils.toString(entity);
-        } 
-        catch (IOException e) {
-            throw new BridgeError("Unable to make a connection to properly execute the"
-                    + "query to Sharepoint"); 
-        }
-
-        Document doc;
-        try {
-            DocumentBuilderFactory dbFactory = DocumentBuilderFactory.newInstance();
-            DocumentBuilder dBuilder = dbFactory.newDocumentBuilder();
-            doc = dBuilder.parse(new InputSource(new ByteArrayInputStream(output.getBytes("utf-8"))));
-            
-            doc.getDocumentElement().normalize();
-        }
-//        catch (ParserConfigurationException | SAXException | IOException e) {
-        catch (Exception e) {
-            logger.error("Full XML Error: " + e.getMessage());
-            throw new BridgeError("Parsing of the XML response failed",e);
-        }
-        
-        List<Record> records = new ArrayList<Record>();
-        NodeList nodeList = doc.getElementsByTagName("entry");
-        
-        for (int i = 0; i < nodeList.getLength(); i++){
-            Map<String,Object> recordMap = new LinkedHashMap<String,Object>();
-            for (String field : fields) {
-                NodeList propertyList = doc.getElementsByTagName("d:" + field);
-                recordMap.put(field, propertyList.item(i).getTextContent());
-            }
-            records.add(new Record(recordMap));
-        }
-
-        // Returning the response
-        return new RecordList(fields, records, metadata);
-    }
-    
 }

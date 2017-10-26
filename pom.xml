@@ -3,7 +3,7 @@
     <modelVersion>4.0.0</modelVersion>
     <groupId>com.kineticdata.bridges.adapter</groupId>
     <artifactId>kinetic-bridgehub-adapter-sharepoint</artifactId>
-    <version>1.0.0</version>
+    <version>1.0.1-SNAPSHOT</version>
     <packaging>jar</packaging>
 
     <name>kinetic-bridgehub-adapter-sharepoint</name>
@@ -11,6 +11,17 @@
         <connection>scm:git:https://github.com/kineticcommunity/kinetic-bridgehub-adapter-sharepoint.git</connection>
         <developerConnection>scm:git:https://github.com/kineticcommunity/kinetic-bridgehub-adapter-sharepoint.git</developerConnection>
     </scm>
+
+    <distributionManagement>
+      <repository>
+          <id>com.kineticdata</id>
+          <url>http://utilities.kineticdata.com/nexus/content/repositories/releases/</url>
+      </repository>
+      <snapshotRepository>
+          <id>com.kineticdata.snapshots</id>
+          <url>http://utilities.kineticdata.com/nexus/content/repositories/snapshots</url>
+      </snapshotRepository>
+  </distributionManagement>
 
     <repositories>
         <repository>
@@ -28,12 +39,22 @@
         <dependency>
             <groupId>com.kineticdata.bridges.adapter</groupId>
             <artifactId>kinetic-bridgehub-adapter</artifactId>
-            <version>1.0.3</version>
+            <version>1.1.0</version>
         </dependency>
         <dependency>
             <groupId>org.slf4j</groupId>
             <artifactId>slf4j-api</artifactId>
             <version>1.7.10</version>
+        </dependency>
+        <dependency>
+            <groupId>com.googlecode.json-simple</groupId>
+            <artifactId>json-simple</artifactId>
+            <version>1.1.1</version>
+        </dependency>
+        <dependency>
+            <groupId>commons-lang</groupId>
+            <artifactId>commons-lang</artifactId>
+            <version>2.6</version>
         </dependency>
     </dependencies>
     <properties>
