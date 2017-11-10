@@ -22,7 +22,7 @@ import org.apache.http.HttpEntity;
 import org.apache.http.HttpResponse;
 import org.apache.http.client.HttpClient;
 import org.apache.http.client.methods.HttpGet;
-import org.apache.http.impl.client.DefaultHttpClient;
+import org.apache.http.impl.client.HttpClients;
 import org.apache.http.util.EntityUtils;
 import org.json.simple.JSONArray;
 import org.json.simple.JSONObject;
@@ -34,10 +34,10 @@ public class SharepointAdapter implements BridgeAdapter {
     /*----------------------------------------------------------------------------------------------
      * PROPERTIES
      *--------------------------------------------------------------------------------------------*/
-    
+
     /** Defines the adapter display name */
     public static final String NAME = "Sharepoint Bridge";
-    
+
     /** Defines the logger */
     protected static final org.slf4j.Logger logger = LoggerFactory.getLogger(SharepointAdapter.class);
 
@@ -54,35 +54,35 @@ public class SharepointAdapter implements BridgeAdapter {
             VERSION = "Unknown";
         }
     }
-    
+
     /** Defines the collection of property names for the adapter */
     public static class Properties {
         public static final String USERNAME = "Username";
         public static final String PASSWORD = "Password";
         public static final String SERVER_URL = "Server URL";
     }
-    
+
     private final ConfigurablePropertyMap properties = new ConfigurablePropertyMap(
         new ConfigurableProperty(SharepointAdapter.Properties.USERNAME).setIsRequired(true),
         new ConfigurableProperty(SharepointAdapter.Properties.PASSWORD).setIsRequired(true).setIsSensitive(true),
         new ConfigurableProperty(SharepointAdapter.Properties.SERVER_URL).setIsRequired(true)
     );
-    
+
     /**
      * Structures that are valid to use in the bridge
      */
     public static final List<String> VALID_STRUCTURES = Arrays.asList(new String[] {
         "Lists"
     });
-    
+
     private String username;
     private String password;
     private String serverUrl;
-    
+
     /*---------------------------------------------------------------------------------------------
      * SETUP METHODS
      *-------------------------------------------------------------------------------------------*/
-    
+
     @Override
     public void initialize() throws BridgeError {
         this.username = properties.getValue(Properties.USERNAME);
@@ -94,17 +94,17 @@ public class SharepointAdapter implements BridgeAdapter {
     public String getName() {
         return NAME;
     }
-    
+
     @Override
     public String getVersion() {
         return VERSION;
     }
-    
+
     @Override
     public void setProperties(Map<String,String> parameters) {
         properties.setValues(parameters);
     }
-    
+
     @Override
     public ConfigurablePropertyMap getProperties() {
         return properties;
@@ -158,7 +158,7 @@ public class SharepointAdapter implements BridgeAdapter {
 
         JSONArray lists = getSharepointLists(this.serverUrl, this.username, this.password,
             request.getFields(), query);
-        
+
         List<Record> records = new ArrayList<Record>();
         List<String> fields = request.getFields();
         for (Object o : lists) {
@@ -176,7 +176,7 @@ public class SharepointAdapter implements BridgeAdapter {
         // Returning the response
         return new RecordList(fields, records);
     }
-    
+
 
     /**************************************************************************
     * HELPER METHODS
@@ -213,7 +213,7 @@ public class SharepointAdapter implements BridgeAdapter {
 
         logger.debug(url.toString());
 
-        HttpClient client = new DefaultHttpClient();
+        HttpClient client = HttpClients.createDefault();
         HttpGet get = new HttpGet(url.toString());
         // Append the username/password as a Basic Authorization Header
         String credentials = String.format("%s:%s", this.username, this.password);
@@ -222,7 +222,7 @@ public class SharepointAdapter implements BridgeAdapter {
         // Set the content type to application/json
         get.setHeader("Accept","application/json; odata=verbose");
         get.setHeader("Content-Type", "application/json");
-        
+
         String output = "";
         try {
             HttpResponse response = client.execute(get);
@@ -237,9 +237,9 @@ public class SharepointAdapter implements BridgeAdapter {
                 throw new BridgeError("Unexpected Error (Code: "+String.valueOf(response.getStatusLine().getStatusCode())+
                     "): Check the Bridgehub logs for more details");
             }
-        } 
+        }
         catch (IOException e) {
-            throw new BridgeError("Unable to make a connection to properly execute the query to Sharepoint"); 
+            throw new BridgeError("Unable to make a connection to properly execute the query to Sharepoint");
         }
 
         JSONObject json = (JSONObject)JSONValue.parse(output);
