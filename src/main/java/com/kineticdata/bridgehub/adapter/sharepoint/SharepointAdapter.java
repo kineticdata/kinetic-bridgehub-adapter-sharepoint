@@ -239,7 +239,7 @@ public class SharepointAdapter implements BridgeAdapter {
             }
         }
         catch (IOException e) {
-            throw new BridgeError("Unable to make a connection to properly execute the query to Sharepoint");
+            throw new BridgeError("Unable to make a connection to properly execute the query to Sharepoint",e);
         }
 
         JSONObject json = (JSONObject)JSONValue.parse(output);
