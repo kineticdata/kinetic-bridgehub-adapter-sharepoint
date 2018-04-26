@@ -3,13 +3,13 @@
     <modelVersion>4.0.0</modelVersion>
     <groupId>com.kineticdata.bridges.adapter</groupId>
     <artifactId>kinetic-bridgehub-adapter-sharepoint</artifactId>
-    <version>1.0.2-SNAPSHOT</version>
+    <version>1.0.2</version>
     <packaging>jar</packaging>
 
     <name>kinetic-bridgehub-adapter-sharepoint</name>
     <scm>
-        <connection>scm:git:https://github.com/kineticcommunity/kinetic-bridgehub-adapter-sharepoint.git</connection>
-        <developerConnection>scm:git:https://github.com/kineticcommunity/kinetic-bridgehub-adapter-sharepoint.git</developerConnection>
+        <connection>scm:git:https://github.com/kineticdata/kinetic-bridgehub-adapter-sharepoint.git</connection>
+        <developerConnection>scm:git:https://github.com/kineticdata/kinetic-bridgehub-adapter-sharepoint.git</developerConnection>
     </scm>
 
     <distributionManagement>
